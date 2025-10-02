@@ -696,8 +696,8 @@ class CourseViewer {
                 const savedTime = this.videoProgress[this.currentCourseId]?.[lessonId] || 0;
 
                 const content = `
-                    <!-- Desktop Video Player -->
-                    <div class="desktop-video-wrapper">
+                    <!-- Shared Video Player -->
+                    <div class="video-wrapper-shared">
                         <div class="video-container">
                             <video controls id="videoPlayer">
                                 <source src="${videoUrl}" type="video/mp4">
@@ -720,52 +720,28 @@ class CourseViewer {
                         </div>
                     </div>
 
-                    <!-- Mobile Video Section -->
-                    <div class="mobile-video-section">
-                        <div class="video-wrapper">
-                            <div class="video-container">
-                                <video controls id="mobileVideoPlayer">
-                                    <source src="${videoUrl}" type="video/mp4">
-                                    Your browser does not support the video tag.
-                                </video>
-                                <div class="video-end-overlay" id="mobileVideoEndOverlay" style="display: none;">
-                                    <div class="video-end-content">
-                                        <div class="video-end-icon">✓</div>
-                                        <h3>Video Complete!</h3>
-                                        <div class="video-end-actions">
-                                            <button class="btn-primary" id="mobileMarkCompleteNextBtn">
-                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                                </svg>
-                                                Mark Complete & Next
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mobile-lesson-title" id="mobileLessonTitle">${lesson.name}</div>
-                        <div class="mobile-video-controls">
-                            <button id="mobileMarkCompleteBtn" class="btn-complete">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="20 6 9 17 4 12"></polyline>
+                    <!-- Mobile Lesson Title and Controls -->
+                    <div class="mobile-lesson-title" id="mobileLessonTitle">${lesson.name}</div>
+                    <div class="mobile-video-controls">
+                        <button id="mobileMarkCompleteBtn" class="btn-complete">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            <span id="mobileCompleteText">Mark as Complete</span>
+                        </button>
+                        <div class="mobile-nav-buttons">
+                            <button id="mobilePrevBtn" class="btn-nav">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
                                 </svg>
-                                <span id="mobileCompleteText">Mark as Complete</span>
+                                Previous
                             </button>
-                            <div class="mobile-nav-buttons">
-                                <button id="mobilePrevBtn" class="btn-nav">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="15 18 9 12 15 6"></polyline>
-                                    </svg>
-                                    Previous
-                                </button>
-                                <button id="mobileNextBtn" class="btn-nav">
-                                    Next
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9 18 15 12 9 6"></polyline>
-                                    </svg>
-                                </button>
-                            </div>
+                            <button id="mobileNextBtn" class="btn-nav">
+                                Next
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                            </button>
                         </div>
                     </div>
 
@@ -781,13 +757,10 @@ class CourseViewer {
                 // Setup mobile navigation buttons
                 this.setupMobileControls();
 
-                // Setup both desktop and mobile video players
+                // Setup single shared video player
                 const videoPlayer = document.getElementById('videoPlayer');
-                const mobileVideoPlayer = document.getElementById('mobileVideoPlayer');
                 const videoEndOverlay = document.getElementById('videoEndOverlay');
-                const mobileVideoEndOverlay = document.getElementById('mobileVideoEndOverlay');
                 const markCompleteNextBtn = document.getElementById('markCompleteNextBtn');
-                const mobileMarkCompleteNextBtn = document.getElementById('mobileMarkCompleteNextBtn');
 
                 // Prepare subtitle URL if available
                 let subtitleUrl = null;
@@ -795,46 +768,27 @@ class CourseViewer {
                     subtitleUrl = URL.createObjectURL(await subtitleFile.handle.getFile());
                 }
 
-                // Setup for both players
-                const players = [videoPlayer, mobileVideoPlayer];
-                for (const player of players) {
-                    if (!player) continue;
-
-                    // Auto-play if flag is set (from previous "Mark Complete & Next")
-                    if (this.shouldAutoPlay) {
-                        setTimeout(() => {
-                            player.play().catch(err => {
-                                console.log('Auto-play prevented by browser:', err);
-                            });
-                        }, 100);
-                    }
-
+                if (videoPlayer) {
                     // Restore video position (but not if already completed)
                     if (savedTime > 0) {
-                        player.addEventListener('loadedmetadata', () => {
-                            if (savedTime < player.duration - 5) {
-                                player.currentTime = savedTime;
+                        videoPlayer.addEventListener('loadedmetadata', () => {
+                            if (savedTime < videoPlayer.duration - 5) {
+                                videoPlayer.currentTime = savedTime;
                             }
-                        });
+                        }, { once: true });
                     }
 
-                    // Save video progress periodically - sync between both players
-                    player.addEventListener('timeupdate', () => {
+                    // Save video progress periodically
+                    videoPlayer.addEventListener('timeupdate', () => {
                         if (!this.videoProgress[this.currentCourseId]) {
                             this.videoProgress[this.currentCourseId] = {};
                         }
-                        this.videoProgress[this.currentCourseId][lessonId] = player.currentTime;
+                        this.videoProgress[this.currentCourseId][lessonId] = videoPlayer.currentTime;
                         this.saveVideoProgress();
-
-                        // Sync with the other player
-                        const otherPlayer = player === videoPlayer ? mobileVideoPlayer : videoPlayer;
-                        if (otherPlayer && Math.abs(otherPlayer.currentTime - player.currentTime) > 1) {
-                            otherPlayer.currentTime = player.currentTime;
-                        }
                     });
 
                     // Handle video end
-                    player.addEventListener('ended', () => {
+                    videoPlayer.addEventListener('ended', () => {
                         this.handleVideoEnd();
                     });
 
@@ -846,21 +800,25 @@ class CourseViewer {
                         track.srclang = 'en';
                         track.src = subtitleUrl;
                         track.default = true;
-                        player.appendChild(track);
+                        videoPlayer.appendChild(track);
+                    }
+
+                    // Auto-play if flag is set
+                    if (this.shouldAutoPlay) {
+                        setTimeout(() => {
+                            videoPlayer.play().catch(err => {
+                                console.log('Auto-play prevented by browser:', err);
+                            });
+                        }, 100);
                     }
                 }
 
-                // Reset auto-play flag after first player setup
+                // Reset auto-play flag after setup
                 this.shouldAutoPlay = false;
 
-                // Mark complete & next buttons (both desktop and mobile)
+                // Mark complete & next button
                 if (markCompleteNextBtn) {
                     markCompleteNextBtn.addEventListener('click', () => {
-                        this.markCompleteAndNext();
-                    });
-                }
-                if (mobileMarkCompleteNextBtn) {
-                    mobileMarkCompleteNextBtn.addEventListener('click', () => {
                         this.markCompleteAndNext();
                     });
                 }
