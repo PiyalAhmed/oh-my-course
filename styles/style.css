@@ -759,8 +759,7 @@ body {
 
 /* Video Player - Shared for both desktop and mobile */
 .video-wrapper-shared {
-    width: 100%;
-    max-width: 1200px;
+    height: auto;
     margin: 0 auto;
     display: block;
     padding: 1rem;
