@@ -290,11 +290,57 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: transform 0.3s ease;
+    transition: none;
+    min-width: var(--sidebar-width);
+    max-width: 600px;
 }
 
 .sidebar.hidden {
     display: none;
+}
+
+/* Resizer */
+.resizer {
+    width: 8px;
+    background: transparent;
+    cursor: col-resize;
+    position: relative;
+    flex-shrink: 0;
+    display: none;
+}
+
+.resizer::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    background: var(--spotify-subdued);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.resizer:hover::before {
+    opacity: 1;
+}
+
+.resizer.resizing::before {
+    opacity: 1;
+    background: var(--spotify-green);
+}
+
+/* Show resizer only on desktop when sidebar is visible */
+@media (min-width: 1025px) {
+    .resizer {
+        display: block;
+    }
+
+    .sidebar.hidden + .resizer {
+        display: none;
+    }
 }
 
 .course-info {
@@ -502,6 +548,7 @@ body {
     background: var(--spotify-dark);
     width: 100%;
     max-width: 100%;
+    min-width: 400px;
 }
 
 /* Allow scrolling on mobile and tablets */

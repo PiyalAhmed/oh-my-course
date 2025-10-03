@@ -95,8 +95,19 @@ class CourseViewer {
         this.modalResolve = null; // For promise-based modal
         this.handleDB = new HandleDB(); // IndexedDB for directory handles
         this.shouldAutoPlay = false; // Flag to auto-play next video
+        this.captionsEnabled = this.loadCaptionPreference(); // Track caption preference
 
         this.init();
+    }
+
+    loadCaptionPreference() {
+        const saved = localStorage.getItem('captions_enabled');
+        return saved === null ? true : saved === 'true';
+    }
+
+    saveCaptionPreference(enabled) {
+        this.captionsEnabled = enabled;
+        localStorage.setItem('captions_enabled', enabled);
     }
 
     // Custom Alert/Confirm Modal
@@ -153,9 +164,10 @@ class CourseViewer {
         await this.requestPersistentStorage();
 
         this.loadCourseLibrary();
-        this.loadLastSession();
         this.attachEventListeners();
-        this.renderHomepage();
+
+        // Try to restore last session
+        await this.loadLastSession();
     }
 
     async requestPersistentStorage() {
@@ -182,6 +194,77 @@ class CourseViewer {
         document.getElementById('markCompleteBtn').addEventListener('click', () => this.toggleLessonComplete());
         document.getElementById('prevLessonBtn').addEventListener('click', () => this.navigateLesson(-1));
         document.getElementById('nextLessonBtn').addEventListener('click', () => this.navigateLesson(1));
+
+        // Resizer for sidebar
+        this.setupResizer();
+    }
+
+    setupResizer() {
+        const resizer = document.getElementById('resizer');
+        const sidebar = document.getElementById('sidebar');
+        const contentArea = document.querySelector('.content-area');
+
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+
+        const MIN_SIDEBAR_WIDTH = 320;
+        const MAX_SIDEBAR_WIDTH = 600;
+        const MIN_CONTENT_WIDTH = 400;
+
+        // Restore saved sidebar width
+        const savedWidth = localStorage.getItem('sidebar_width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth);
+            if (width >= MIN_SIDEBAR_WIDTH && width <= MAX_SIDEBAR_WIDTH) {
+                sidebar.style.width = width + 'px';
+            }
+        }
+
+        resizer.addEventListener('mousedown', (e) => {
+            // Only allow resizing on desktop (min-width: 1025px)
+            if (window.innerWidth <= 1024) return;
+
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = sidebar.offsetWidth;
+
+            resizer.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+
+            const deltaX = e.clientX - startX;
+            const newWidth = startWidth + deltaX;
+
+            // Calculate available space
+            const totalWidth = window.innerWidth;
+            const remainingWidth = totalWidth - newWidth - 8; // 8px for resizer
+
+            // Apply constraints
+            if (newWidth >= MIN_SIDEBAR_WIDTH &&
+                newWidth <= MAX_SIDEBAR_WIDTH &&
+                remainingWidth >= MIN_CONTENT_WIDTH) {
+                sidebar.style.width = newWidth + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isResizing) return;
+
+            isResizing = false;
+            resizer.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+
+            // Save the new width
+            localStorage.setItem('sidebar_width', sidebar.offsetWidth);
+        });
     }
 
     async openCourse() {
@@ -799,8 +882,23 @@ class CourseViewer {
                         track.label = 'English';
                         track.srclang = 'en';
                         track.src = subtitleUrl;
-                        track.default = true;
+                        track.default = this.captionsEnabled;
                         videoPlayer.appendChild(track);
+
+                        // Apply caption preference after track loads
+                        track.addEventListener('load', () => {
+                            if (videoPlayer.textTracks.length > 0) {
+                                videoPlayer.textTracks[0].mode = this.captionsEnabled ? 'showing' : 'hidden';
+                            }
+                        });
+
+                        // Listen for caption changes by user
+                        videoPlayer.textTracks.addEventListener('change', () => {
+                            if (videoPlayer.textTracks.length > 0) {
+                                const isShowing = videoPlayer.textTracks[0].mode === 'showing';
+                                this.saveCaptionPreference(isShowing);
+                            }
+                        });
                     }
 
                     // Auto-play if flag is set
@@ -1049,6 +1147,12 @@ class CourseViewer {
 
     // Homepage and Course Library Management
     goHome() {
+        // Save the current course as last viewed, but mark that we're on homepage
+        if (this.currentCourseId) {
+            localStorage.setItem('last_viewed_course', this.currentCourseId);
+        }
+        localStorage.removeItem('last_course_id');
+
         // Show welcome screen, hide lesson content and sidebar, show add button
         document.getElementById('welcomeScreen').style.display = 'flex';
         document.getElementById('lessonContent').style.display = 'none';
@@ -1077,13 +1181,16 @@ class CourseViewer {
         const courses = Array.from(this.courseLibrary.entries())
             .sort((a, b) => b[1].lastAccessed - a[1].lastAccessed);
 
+        // Get last viewed course for highlighting
+        const lastViewedCourse = localStorage.getItem('last_viewed_course');
+
         courses.forEach(([courseId, courseData]) => {
             const progress = this.getCourseProgress(courseId);
             const lastLesson = this.getLastViewedLesson(courseId);
 
             const card = document.createElement('div');
             card.className = 'course-card';
-            if (courseId === this.currentCourseId) {
+            if (courseId === lastViewedCourse) {
                 card.classList.add('active');
             }
 
@@ -1343,12 +1450,30 @@ class CourseViewer {
         localStorage.setItem('last_course_id', this.currentCourseId);
     }
 
-    loadLastSession() {
+    async loadLastSession() {
         const lastCourseId = localStorage.getItem('last_course_id');
-        if (!lastCourseId) return;
+        if (!lastCourseId) {
+            // No last course, show homepage
+            this.renderHomepage();
+            return;
+        }
 
-        // We'll try to load the last course, but we need directory handle
-        // This will be handled by the course library rendering
+        // Check if course exists in library
+        const courseData = this.courseLibrary.get(lastCourseId);
+        if (!courseData) {
+            // Course not in library, show homepage
+            this.renderHomepage();
+            return;
+        }
+
+        // Try to load the last course automatically
+        try {
+            await this.loadCourseFromLibrary(lastCourseId);
+        } catch (error) {
+            // If failed to load, show homepage
+            console.error('Error restoring last session:', error);
+            this.renderHomepage();
+        }
     }
 
     loadLastSessionForCourse(courseId) {
