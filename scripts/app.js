@@ -312,6 +312,9 @@ class CourseViewer {
             // Load progress for this course
             this.loadCourseProgress(this.currentCourseId);
 
+            // Save progress to update duration info
+            this.saveCourseProgress(this.currentCourseId);
+
             // Save directory handle to IndexedDB
             await this.handleDB.saveHandle(this.currentCourseId, this.directoryHandle);
 
@@ -401,7 +404,8 @@ class CourseViewer {
                         lessonGroups.set(lessonNumber, {
                             number: lessonNumber,
                             name: this.cleanLessonName(lessonEntry.name),
-                            files: []
+                            files: [],
+                            duration: 0
                         });
                     }
 
@@ -425,8 +429,24 @@ class CourseViewer {
                 .filter(lesson => lesson.files.some(f => f.type === 'video'))
                 .sort((a, b) => this.naturalSort(a.number, b.number));
 
+            // Extract durations for all videos in this section
+            for (const lesson of videoLessons) {
+                const videoFile = lesson.files.find(f => f.type === 'video');
+                if (videoFile) {
+                    try {
+                        lesson.duration = await this.getVideoDuration(videoFile.handle);
+                    } catch (error) {
+                        console.error('Error getting duration for', lesson.name, error);
+                        lesson.duration = 0;
+                    }
+                }
+            }
+
             section.lessons = videoLessons;
             section.hasNonVideoFiles = nonVideoFiles.length > 0;
+
+            // Calculate section duration
+            section.duration = section.lessons.reduce((sum, lesson) => sum + lesson.duration, 0);
 
             // Only add section if it has video lessons
             if (section.lessons.length > 0) {
@@ -488,6 +508,43 @@ class CourseViewer {
         return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
     }
 
+    async getVideoDuration(videoHandle) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const file = await videoHandle.getFile();
+                const url = URL.createObjectURL(file);
+                const video = document.createElement('video');
+
+                video.addEventListener('loadedmetadata', () => {
+                    URL.revokeObjectURL(url);
+                    resolve(video.duration);
+                });
+
+                video.addEventListener('error', () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Failed to load video metadata'));
+                });
+
+                video.src = url;
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    formatDuration(seconds) {
+        if (!seconds || seconds === 0) return '0:00';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+
     renderCourseNavigation() {
         const courseTitle = document.getElementById('courseTitle');
         const courseNav = document.getElementById('courseNav');
@@ -502,7 +559,10 @@ class CourseViewer {
             const sectionHeader = document.createElement('div');
             sectionHeader.className = 'section-header';
             sectionHeader.innerHTML = `
-                <span>${section.name}</span>
+                <span class="section-title-group">
+                    <span>${section.name}</span>
+                    <span class="section-duration">${this.formatDuration(section.duration)}</span>
+                </span>
                 <span class="section-toggle">▼</span>
             `;
 
@@ -540,6 +600,7 @@ class CourseViewer {
                     <div class="lesson-checkbox"></div>
                     <span class="lesson-icon">${icon}</span>
                     <span class="lesson-name">${lesson.name}</span>
+                    <span class="lesson-duration">${this.formatDuration(lesson.duration)}</span>
                 `;
 
                 lessonEl.addEventListener('click', () => {
@@ -645,9 +706,10 @@ class CourseViewer {
             sectionEl.style.marginBottom = '1rem';
 
             const sectionHeader = document.createElement('div');
-            sectionHeader.style.cssText = 'padding: 0.75rem; background: var(--spotify-base); border-radius: 4px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--spotify-gray); cursor: pointer; display: flex; justify-content: space-between; align-items: center;';
+            sectionHeader.style.cssText = 'padding: 0.75rem; background: var(--spotify-base); border-radius: 4px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--spotify-gray); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;';
             sectionHeader.innerHTML = `
-                <span>${section.name}</span>
+                <span style="flex: 1;">${section.name}</span>
+                <span style="font-size: 0.7rem; font-weight: 400; color: var(--spotify-subdued);">${this.formatDuration(section.duration)}</span>
                 <span class="mobile-section-toggle">▼</span>
             `;
 
@@ -690,9 +752,14 @@ class CourseViewer {
                 name.textContent = lesson.name;
                 name.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
 
+                const duration = document.createElement('span');
+                duration.textContent = this.formatDuration(lesson.duration);
+                duration.style.cssText = 'font-size: 0.75rem; color: var(--spotify-subdued); opacity: 0.8;';
+
                 lessonEl.appendChild(checkbox);
                 lessonEl.appendChild(icon);
                 lessonEl.appendChild(name);
+                lessonEl.appendChild(duration);
 
                 lessonEl.addEventListener('click', () => {
                     this.loadLesson(sectionIndex, lessonIndex);
@@ -1197,6 +1264,7 @@ class CourseViewer {
             card.innerHTML = `
                 <div class="course-card-header">
                     <h3>${courseData.name}</h3>
+                    ${progress.totalDuration > 0 ? `<p class="course-duration">${this.formatDuration(progress.totalDuration)}</p>` : ''}
                 </div>
                 <div class="course-card-progress">
                     <div class="progress-bar">
@@ -1222,14 +1290,15 @@ class CourseViewer {
     getCourseProgress(courseId) {
         const progressData = localStorage.getItem(`course_progress_${courseId}`);
         if (!progressData) {
-            return { percentage: 0, completed: 0, total: 0 };
+            return { percentage: 0, completed: 0, total: 0, totalDuration: 0 };
         }
 
         const data = JSON.parse(progressData);
         return {
             percentage: data.percentage || 0,
             completed: data.completedCount || 0,
-            total: data.totalLessons || 0
+            total: data.totalLessons || 0,
+            totalDuration: data.totalDuration || 0
         };
     }
 
@@ -1306,6 +1375,9 @@ class CourseViewer {
 
             this.courseStructure = await this.parseCourseStructure(this.directoryHandle);
             this.loadCourseProgress(courseId);
+
+            // Save progress to update duration info
+            this.saveCourseProgress(courseId);
 
             this.renderCourseNavigation();
             this.updateProgressBar();
@@ -1413,13 +1485,16 @@ class CourseViewer {
             sum + section.lessons.length, 0);
         const completedCount = this.completedLessons.size;
         const percentage = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+        const totalDuration = this.courseStructure.reduce((sum, section) =>
+            sum + section.duration, 0);
 
         const progressData = {
             courseName: this.courseName,
             completedLessons: Array.from(this.completedLessons),
             completedCount,
             totalLessons,
-            percentage
+            percentage,
+            totalDuration
         };
         localStorage.setItem(`course_progress_${courseId}`, JSON.stringify(progressData));
     }

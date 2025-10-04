@@ -454,8 +454,8 @@ body {
     color: var(--spotify-gray);
     cursor: pointer;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     transition: all 0.2s ease;
 }
 
@@ -463,9 +463,24 @@ body {
     color: var(--spotify-white);
 }
 
+.section-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.section-duration {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--spotify-gray);
+    text-transform: none;
+    margin-left: 0.5rem;
+}
+
 .section-toggle {
     transition: transform 0.2s ease;
     opacity: 0.6;
+    margin-left: auto;
 }
 
 .section.collapsed .section-toggle {
@@ -537,6 +552,12 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.lesson-duration {
+    font-size: 0.75rem;
+    color: var(--spotify-gray);
+    flex-shrink: 0;
 }
 
 /* Content Area */
@@ -740,12 +761,23 @@ body {
     outline: 2px solid var(--spotify-green);
 }
 
+.course-card-header {
+    margin-bottom: 1rem;
+}
+
 .course-card h3 {
     font-size: 1.125rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.25rem;
     line-height: 1.3;
     color: var(--spotify-white);
+}
+
+.course-duration {
+    font-size: 0.8rem;
+    color: var(--spotify-gray);
+    font-weight: 500;
+    margin: 0;
 }
 
 .course-card-progress {
