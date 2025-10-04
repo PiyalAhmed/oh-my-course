@@ -681,6 +681,7 @@ body {
     padding-top: 2rem;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     text-align: center;
+    margin-bottom: 2rem;
 }
 
 .support-text {
@@ -720,6 +721,25 @@ body {
 .coffee-btn svg {
     width: 20px;
     height: 20px;
+}
+
+/* Footer Credit */
+.footer-credit {
+    text-align: center;
+    padding: 1rem 0;
+    font-size: 0.875rem;
+    color: var(--spotify-gray);
+}
+
+.footer-credit a {
+    color: var(--spotify-white);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
+}
+
+.footer-credit a:hover {
+    color: var(--spotify-green);
 }
 
 /* Course Library */
